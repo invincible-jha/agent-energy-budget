@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-energy-budget"
-version = "0.1.0"
+version = "0.2.0"
 description = "Agent cost control, energy budget management, and token tracking"
 readme = "README.md"
 requires-python = ">=3.10"
