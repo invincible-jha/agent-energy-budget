@@ -1,0 +1,49 @@
+{
+  "benchmark": "cost_prediction_accuracy",
+  "n_output_tokens_assumed": 512,
+  "backend": "tiktoken",
+  "seed": 42,
+  "overall": {
+    "mean_error_pct": 3.06,
+    "max_error_pct": 10.68,
+    "n_samples": 22
+  },
+  "by_category": {
+    "short": {
+      "mean_error_pct": 0.09,
+      "max_error_pct": 0.24,
+      "min_error_pct": 0.0,
+      "n_samples": 5
+    },
+    "medium": {
+      "mean_error_pct": 2.4,
+      "max_error_pct": 2.4,
+      "min_error_pct": 2.4,
+      "n_samples": 5
+    },
+    "long": {
+      "mean_error_pct": 10.68,
+      "max_error_pct": 10.68,
+      "min_error_pct": 10.68,
+      "n_samples": 3
+    },
+    "code": {
+      "mean_error_pct": 1.69,
+      "max_error_pct": 2.32,
+      "min_error_pct": 1.08,
+      "n_samples": 5
+    },
+    "cached_simulation": {
+      "mean_error_pct": 3.61,
+      "max_error_pct": 3.67,
+      "min_error_pct": 3.49,
+      "n_samples": 4
+    }
+  },
+  "estimation_latency_ms": {
+    "p50": 0.1623,
+    "p95": 0.4744,
+    "mean": 2.1122
+  },
+  "note": "Ground truth = chars/4 approximation (OpenAI tokeniser FAQ). LiteLLM #13724 (2024-07) showed 50% error on Anthropic models. Target: <15% mean error for pre-call estimation. Source: https://github.com/BerriAI/litellm/issues/13724"
+}

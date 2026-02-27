@@ -1,0 +1,49 @@
+{
+  "benchmark": "cached_token_detection",
+  "n_output_tokens": 256,
+  "seed": 42,
+  "cache_read_factor": 0.1,
+  "cache_write_factor": 1.25,
+  "detection_summary": {
+    "cache_hit_mean_overprediction_pct": 38.49,
+    "cache_write_mean_overprediction_pct": -13.72,
+    "n_cache_hits_tested": 3,
+    "n_cache_writes_tested": 1
+  },
+  "per_prompt": [
+    {
+      "prompt_id": "cached_000",
+      "is_cache_hit": 0.0,
+      "naive_cost_usd": 0.0014976,
+      "cache_aware_cost_usd": 0.0017358,
+      "overprediction_pct": -13.72
+    },
+    {
+      "prompt_id": "cached_001",
+      "is_cache_hit": 1.0,
+      "naive_cost_usd": 0.0014992,
+      "cache_aware_cost_usd": 0.00108248,
+      "overprediction_pct": 38.5
+    },
+    {
+      "prompt_id": "cached_002",
+      "is_cache_hit": 1.0,
+      "naive_cost_usd": 0.0014976,
+      "cache_aware_cost_usd": 0.00108168,
+      "overprediction_pct": 38.45
+    },
+    {
+      "prompt_id": "cached_003",
+      "is_cache_hit": 1.0,
+      "naive_cost_usd": 0.0014984,
+      "cache_aware_cost_usd": 0.00108168,
+      "overprediction_pct": 38.53
+    }
+  ],
+  "estimation_latency_ms": {
+    "p50": 0.1773,
+    "p95": 8.3048,
+    "mean": 2.2056
+  },
+  "note": "CostEstimator does not model cached token pricing. This benchmark documents the resulting overprediction gap. Anthropic cache read = 10% of input rate; cache write = 125%. Source: https://www.anthropic.com/pricing (Feb 2026). LiteLLM #13724: cached token handling was a reported failure mode."
+}

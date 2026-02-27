@@ -1,0 +1,49 @@
+{
+  "benchmark": "token_counting_accuracy",
+  "backend": "tiktoken",
+  "seed": 42,
+  "overall": {
+    "mean_pct_error": 22.68,
+    "mean_abs_error_tokens": 114.82,
+    "max_pct_error": 166.67,
+    "n_samples": 22
+  },
+  "by_category": {
+    "short": {
+      "mean_pct_error": 42.83,
+      "mean_abs_error_tokens": 1.8,
+      "max_pct_error": 166.67,
+      "n_samples": 5
+    },
+    "medium": {
+      "mean_pct_error": 21.9,
+      "mean_abs_error_tokens": 69.0,
+      "max_pct_error": 21.9,
+      "n_samples": 5
+    },
+    "long": {
+      "mean_pct_error": 24.3,
+      "mean_abs_error_tokens": 488.0,
+      "max_pct_error": 24.3,
+      "n_samples": 3
+    },
+    "code": {
+      "mean_pct_error": 7.19,
+      "mean_abs_error_tokens": 47.2,
+      "max_pct_error": 7.26,
+      "n_samples": 5
+    },
+    "cached_simulation": {
+      "mean_pct_error": 16.6,
+      "mean_abs_error_tokens": 118.0,
+      "max_pct_error": 16.81,
+      "n_samples": 4
+    }
+  },
+  "counting_latency_ms": {
+    "p50": 0.1605,
+    "p95": 0.4993,
+    "mean": 0.6723
+  },
+  "note": "Ground truth = chars/4 approximation. LiteLLM #13724 (2024-07): ~50% error on Anthropic outputs. tiktoken backend expected to be within 5-10%; heuristic within 20-30%."
+}
