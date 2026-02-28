@@ -38,7 +38,6 @@ import type {
   ApiError,
   ApiResult,
   Budget,
-  BudgetAlert,
   CostEntry,
   ModelPricing,
   PredictCostRequest,
@@ -287,15 +286,3 @@ export function createAgentEnergyBudgetClient(
   };
 }
 
-/** Re-export config and key types for convenience. */
-export type {
-  Budget,
-  BudgetAlert,
-  CostEntry,
-  ModelPricing,
-  PredictCostRequest,
-  SetBudgetLimitRequest,
-  TokenUsage,
-  UsageReport,
-  WorkloadForecast,
-};
