@@ -21,6 +21,14 @@ Part of the [AumOS](https://github.com/aumos-ai) open-source agent infrastructur
 - Middleware wrappers for LangChain, CrewAI, AutoGen, Anthropic SDK, and OpenAI SDK that intercept calls and apply budget checks transparently
 - Spend reporting with per-model breakdowns, top-N cost attribution, and ASCII/matplotlib visualizations
 
+## Current Limitations
+
+> **Transparency note**: We list known limitations to help you evaluate fit.
+
+- **Pricing**: Static pricing tables. No real-time API price feeds.
+- **Cache**: No semantic caching yet — exact match only.
+- **Providers**: Manual cost model configuration per provider.
+
 ## Quick Start
 
 Install from PyPI:

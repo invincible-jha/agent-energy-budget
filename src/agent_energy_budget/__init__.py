@@ -17,5 +17,16 @@ from __future__ import annotations
 __version__: str = "0.1.0"
 
 from agent_energy_budget.convenience import Budget
+from agent_energy_budget.integrations.observability_bridge import (
+    ObservabilityAlertBridge,
+    SpanContextProtocol,
+    TracerProtocol,
+)
 
-__all__ = ["__version__", "Budget"]
+__all__ = [
+    "__version__",
+    "Budget",
+    "ObservabilityAlertBridge",
+    "SpanContextProtocol",
+    "TracerProtocol",
+]

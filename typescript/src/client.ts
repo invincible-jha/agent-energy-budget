@@ -1,8 +1,12 @@
 /**
  * HTTP client for the agent-energy-budget service API.
  *
- * Uses the Fetch API (available natively in Node 18+, browsers, and Deno).
- * No external dependencies required.
+ * Delegates all HTTP transport to `@aumos/sdk-core` which provides
+ * automatic retry with exponential back-off, timeout management via
+ * `AbortSignal.timeout`, interceptor support, and a typed error hierarchy.
+ *
+ * The public-facing `ApiResult<T>` envelope is preserved for full
+ * backward compatibility with existing callers.
  *
  * @example
  * ```ts
@@ -10,32 +14,30 @@
  *
  * const client = createAgentEnergyBudgetClient({ baseUrl: "http://localhost:8095" });
  *
- * // Check current budget
  * const budget = await client.getBudget("my-agent");
  * if (budget.ok) {
  *   console.log("Daily limit:", budget.data.daily_limit, "USD");
  * }
  *
- * // Record a completed LLM call
  * await client.trackCost({
  *   agent_id: "my-agent",
  *   model: "claude-haiku-4",
  *   input_tokens: 2048,
  *   output_tokens: 512,
  * });
- *
- * // Predict cost before making an LLM call
- * const forecast = await client.predictCost({
- *   agent_id: "my-agent",
- *   model: "gpt-4o-mini",
- *   prompt_text: "Summarize the report.",
- *   max_output_tokens: 256,
- * });
  * ```
  */
 
+import {
+  createHttpClient,
+  HttpError,
+  NetworkError,
+  TimeoutError,
+  AumosError,
+  type HttpClient,
+} from "@aumos/sdk-core";
+
 import type {
-  ApiError,
   ApiResult,
   Budget,
   CostEntry,
@@ -62,55 +64,51 @@ export interface AgentEnergyBudgetClientConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers
+// Internal adapter
 // ---------------------------------------------------------------------------
 
-async function fetchJson<T>(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
+async function callApi<T>(
+  operation: () => Promise<{ readonly data: T; readonly status: number }>,
 ): Promise<ApiResult<T>> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    const body = await response.json() as unknown;
-
-    if (!response.ok) {
-      const errorBody = body as Partial<ApiError>;
+    const response = await operation();
+    return { ok: true, data: response.data };
+  } catch (error: unknown) {
+    if (error instanceof HttpError) {
       return {
         ok: false,
-        error: {
-          error: errorBody.error ?? "Unknown error",
-          detail: errorBody.detail ?? "",
-        },
-        status: response.status,
+        error: { error: error.message, detail: String(error.body ?? "") },
+        status: error.statusCode,
       };
     }
-
-    return { ok: true, data: body as T };
-  } catch (err: unknown) {
-    clearTimeout(timeoutId);
-    const message = err instanceof Error ? err.message : String(err);
+    if (error instanceof TimeoutError) {
+      return {
+        ok: false,
+        error: { error: "Request timed out", detail: error.message },
+        status: 0,
+      };
+    }
+    if (error instanceof NetworkError) {
+      return {
+        ok: false,
+        error: { error: "Network error", detail: error.message },
+        status: 0,
+      };
+    }
+    if (error instanceof AumosError) {
+      return {
+        ok: false,
+        error: { error: error.code, detail: error.message },
+        status: error.statusCode ?? 0,
+      };
+    }
+    const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      error: { error: "Network error", detail: message },
+      error: { error: "Unexpected error", detail: message },
       status: 0,
     };
   }
-}
-
-function buildHeaders(
-  extraHeaders: Readonly<Record<string, string>> | undefined,
-): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    ...extraHeaders,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -122,9 +120,6 @@ export interface AgentEnergyBudgetClient {
   /**
    * Retrieve the current budget configuration for an agent.
    *
-   * Returns daily, weekly, and monthly limits alongside the configured
-   * degradation strategy, alert thresholds, and model preferences.
-   *
    * @param agentId - The unique agent identifier.
    * @returns The Budget configuration record for this agent.
    */
@@ -132,9 +127,6 @@ export interface AgentEnergyBudgetClient {
 
   /**
    * Record the actual cost of a completed LLM call.
-   *
-   * Persists the call record to JSONL storage and fires any alert
-   * thresholds that have been crossed as a result of this spend.
    *
    * @param entry - Cost record with agent, model, token counts, and optional cost.
    * @returns The persisted TokenUsage record with calculated cost_usd.
@@ -144,9 +136,6 @@ export interface AgentEnergyBudgetClient {
   /**
    * Predict the cost of an LLM call before it is executed.
    *
-   * Uses the pricing tables and token estimation heuristics to return
-   * an upper-bound cost estimate with a confidence score.
-   *
    * @param request - Prediction request with model, prompt text, and token cap.
    * @returns WorkloadForecast with estimated tokens, cost, and confidence.
    */
@@ -155,10 +144,6 @@ export interface AgentEnergyBudgetClient {
   /**
    * Update the budget limits for an agent.
    *
-   * Supports updating daily, weekly, and monthly limits independently.
-   * Only fields provided in the request are modified; omitted fields retain
-   * their current values.
-   *
    * @param request - Budget limit update payload.
    * @returns The updated Budget configuration record.
    */
@@ -166,9 +151,6 @@ export interface AgentEnergyBudgetClient {
 
   /**
    * Retrieve a consolidated usage report for an agent across all periods.
-   *
-   * Returns daily, weekly, and monthly BudgetStatus snapshots plus a
-   * lifetime total spend.
    *
    * @param agentId - The unique agent identifier.
    * @param options - Optional filter by period ("daily" | "weekly" | "monthly").
@@ -181,10 +163,6 @@ export interface AgentEnergyBudgetClient {
 
   /**
    * Retrieve pricing information for a specific model.
-   *
-   * Supports fuzzy model name resolution including aliases (e.g. "haiku"
-   * resolves to "claude-haiku-4"). Returns null in the data field if the
-   * model cannot be resolved.
    *
    * @param model - Model identifier string (exact or alias).
    * @returns ModelPricing with per-million token rates, tier, and context window.
@@ -205,84 +183,54 @@ export interface AgentEnergyBudgetClient {
 export function createAgentEnergyBudgetClient(
   config: AgentEnergyBudgetClientConfig,
 ): AgentEnergyBudgetClient {
-  const { baseUrl, timeoutMs = 30_000, headers: extraHeaders } = config;
-  const baseHeaders = buildHeaders(extraHeaders);
+  const http: HttpClient = createHttpClient({
+    baseUrl: config.baseUrl,
+    timeout: config.timeoutMs ?? 30_000,
+    defaultHeaders: config.headers,
+  });
 
   return {
-    async getBudget(agentId: string): Promise<ApiResult<Budget>> {
-      return fetchJson<Budget>(
-        `${baseUrl}/budgets/${encodeURIComponent(agentId)}`,
-        { method: "GET", headers: baseHeaders },
-        timeoutMs,
+    getBudget(agentId: string): Promise<ApiResult<Budget>> {
+      return callApi(() =>
+        http.get<Budget>(`/budgets/${encodeURIComponent(agentId)}`),
       );
     },
 
-    async trackCost(entry: CostEntry): Promise<ApiResult<TokenUsage>> {
-      return fetchJson<TokenUsage>(
-        `${baseUrl}/costs`,
-        {
-          method: "POST",
-          headers: baseHeaders,
-          body: JSON.stringify(entry),
-        },
-        timeoutMs,
+    trackCost(entry: CostEntry): Promise<ApiResult<TokenUsage>> {
+      return callApi(() => http.post<TokenUsage>("/costs", entry));
+    },
+
+    predictCost(request: PredictCostRequest): Promise<ApiResult<WorkloadForecast>> {
+      return callApi(() => http.post<WorkloadForecast>("/costs/predict", request));
+    },
+
+    setBudgetLimit(request: SetBudgetLimitRequest): Promise<ApiResult<Budget>> {
+      return callApi(() =>
+        http.patch<Budget>(
+          `/budgets/${encodeURIComponent(request.agent_id)}/limits`,
+          request,
+        ),
       );
     },
 
-    async predictCost(
-      request: PredictCostRequest,
-    ): Promise<ApiResult<WorkloadForecast>> {
-      return fetchJson<WorkloadForecast>(
-        `${baseUrl}/costs/predict`,
-        {
-          method: "POST",
-          headers: baseHeaders,
-          body: JSON.stringify(request),
-        },
-        timeoutMs,
-      );
-    },
-
-    async setBudgetLimit(
-      request: SetBudgetLimitRequest,
-    ): Promise<ApiResult<Budget>> {
-      return fetchJson<Budget>(
-        `${baseUrl}/budgets/${encodeURIComponent(request.agent_id)}/limits`,
-        {
-          method: "PATCH",
-          headers: baseHeaders,
-          body: JSON.stringify(request),
-        },
-        timeoutMs,
-      );
-    },
-
-    async getUsageReport(
+    getUsageReport(
       agentId: string,
       options?: { period?: "daily" | "weekly" | "monthly" },
     ): Promise<ApiResult<UsageReport>> {
-      const params = new URLSearchParams();
-      if (options?.period !== undefined) {
-        params.set("period", options.period);
-      }
-      const queryString = params.toString();
-      const url = queryString
-        ? `${baseUrl}/reports/${encodeURIComponent(agentId)}?${queryString}`
-        : `${baseUrl}/reports/${encodeURIComponent(agentId)}`;
-      return fetchJson<UsageReport>(
-        url,
-        { method: "GET", headers: baseHeaders },
-        timeoutMs,
+      const queryParams: Record<string, string> = {};
+      if (options?.period !== undefined) queryParams["period"] = options.period;
+      return callApi(() =>
+        http.get<UsageReport>(
+          `/reports/${encodeURIComponent(agentId)}`,
+          { queryParams },
+        ),
       );
     },
 
-    async getModelPricing(model: string): Promise<ApiResult<ModelPricing>> {
-      return fetchJson<ModelPricing>(
-        `${baseUrl}/pricing/${encodeURIComponent(model)}`,
-        { method: "GET", headers: baseHeaders },
-        timeoutMs,
+    getModelPricing(model: string): Promise<ApiResult<ModelPricing>> {
+      return callApi(() =>
+        http.get<ModelPricing>(`/pricing/${encodeURIComponent(model)}`),
       );
     },
   };
 }
-
